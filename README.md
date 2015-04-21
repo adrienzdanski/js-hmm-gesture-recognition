@@ -5,6 +5,7 @@ Trainable Gesture-Recognition based on Hidden Markov Models using JavaScript, We
 System-Requirements: 
 - Latest Google Chrome
 - WebGL and WebRTC support
+- App running on a server (cross-origin-policy)
 - Connected webcam 
 
 1. Training (train.html)
