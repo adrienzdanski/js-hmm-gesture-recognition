@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>MA - Validate</title>
+	<!-- vertex shader -->
+	<script id="vs-base" type="x-shader/x-vertex">
+		attribute vec3 aVertexPosition;
+		attribute vec2 aTextureCoord;
+
+		varying vec2 vTextureCoord;
+
+		void main() {
+			gl_Position = vec4(aVertexPosition, 1.0);
+			vTextureCoord = aTextureCoord;
+		}
+	</script>
+
+	<!-- fragment shader -->
+	<script id="fs-blurH" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec2 vTextureCoord;
+
+		uniform sampler2D uSampler;
+		uniform vec2 invScreenSize;
+
+		void main() {
+			vec2 tc = vTextureCoord;
+			vec4 sum = vec4(0.0);
+			sum += texture2D(uSampler, vec2(tc.x - 4.0*invScreenSize.x, tc.y)) * 0.05;
+			sum += texture2D(uSampler, vec2(tc.x - 3.0*invScreenSize.x, tc.y)) * 0.09;
+			sum += texture2D(uSampler, vec2(tc.x - 2.0*invScreenSize.x, tc.y)) * 0.12;
+			sum += texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y)) * 0.15;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y)) * 0.16;
+			sum += texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y)) * 0.15;
+			sum += texture2D(uSampler, vec2(tc.x + 2.0*invScreenSize.x, tc.y)) * 0.12;
+			sum += texture2D(uSampler, vec2(tc.x + 3.0*invScreenSize.x, tc.y)) * 0.09;
+			sum += texture2D(uSampler, vec2(tc.x + 4.0*invScreenSize.x, tc.y)) * 0.05;
+			gl_FragColor = sum;
+		}
+	</script>
+	<script id="fs-blurV" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec2 vTextureCoord;
+
+		uniform sampler2D uSampler;
+		uniform vec2 invScreenSize;
+
+		void main() {
+			vec2 tc = vTextureCoord;
+			vec4 sum = vec4(0.0);
+			sum += texture2D(uSampler, vec2(tc.x, tc.y - 4.0*invScreenSize.y)) * 0.05;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y - 3.0*invScreenSize.y)) * 0.09;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y - 2.0*invScreenSize.y)) * 0.12;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y)) * 0.15;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y)) * 0.16;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y + invScreenSize.y)) * 0.15;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y + 2.0*invScreenSize.y)) * 0.12;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y + 3.0*invScreenSize.y)) * 0.09;
+			sum += texture2D(uSampler, vec2(tc.x, tc.y + 4.0*invScreenSize.y)) * 0.05;
+			gl_FragColor = sum;
+		}
+	</script>
+	<script id="fs-segmentate" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec2 vTextureCoord;
+
+		uniform sampler2D uSampler;
+		uniform vec2 invScreenSize;
+
+		uniform float uMinH;
+		uniform float uMaxH;
+		uniform float uMinS; 
+		uniform float uMaxS;
+		uniform float uMinV;
+		uniform float uMaxV;
+
+		// rgb2hsv based on http://lolengine.net/blog/2013/07/27/rgb-to-hsv-in-glsl
+		vec3 rgb2hsv(vec3 c) {
+		    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+		    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+		    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+		    float d = q.x - min(q.w, q.y);
+		    float e = 1.0e-10;
+		    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+		}
+
+		/* skin color: 
+			H >= 3.0
+			H <= 33.0
+			V >= 15.0
+			V <= 250.0
+			uMinH = 0.6
+			uMaxH = 9.0
+			uMinS = 0.1
+			uMaxS = 9.8
+			uMinV = 0.5
+			uMaxV = 2.0
+		*/
+		void main() {
+			vec4 texelColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+			vec3 hsv = rgb2hsv(texelColor.rgb);
+
+			if((hsv.x >= uMinH && hsv.x <= uMaxH) && (hsv.y >= uMinS && hsv.y <= uMaxS) && (hsv.z >= uMinV && hsv.z <= uMaxV)) {
+				gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+			} else {
+				gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+			}
+		}
+	</script>
+	<script id="fs-erode" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec2 vTextureCoord;
+
+		uniform sampler2D uSampler;
+		uniform vec2 invScreenSize;
+
+		void main() {
+			vec2 tc = vTextureCoord;
+			vec4 minValue = vec4(1.0);
+		    vec4 sample[9];
+		    
+		    sample[0] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y - invScreenSize.y));
+		    sample[1] = texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y));
+		    sample[2] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y - invScreenSize.y));
+		    sample[3] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y));
+		    sample[4] = texture2D(uSampler, vec2(tc.x, tc.y));
+		    sample[5] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y));
+		    sample[6] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y + invScreenSize.y));
+		    sample[7] = texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y));
+		    sample[8] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y - invScreenSize.y));
+
+		    for (int i = 0; i < 9; i++) {
+		        minValue = min(sample[i], minValue);
+		    }
+
+		    gl_FragColor = minValue;
+		}
+	</script>
+	<script id="fs-dilate" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec2 vTextureCoord;
+
+		uniform sampler2D uSampler;
+		uniform vec2 invScreenSize;
+
+		void main() {
+			vec2 tc = vTextureCoord;
+			vec4 maxValue = vec4(0.0);
+		    vec4 sample[9];
+		    
+		    sample[0] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y - invScreenSize.y));
+		    sample[1] = texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y));
+		    sample[2] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y - invScreenSize.y));
+		    sample[3] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y));
+		    sample[4] = texture2D(uSampler, vec2(tc.x, tc.y));
+		    sample[5] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y));
+		    sample[6] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y + invScreenSize.y));
+		    sample[7] = texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y));
+		    sample[8] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y - invScreenSize.y));
+
+		    for (int i = 0; i < 9; i++) {
+		        maxValue = max(sample[i], maxValue);
+		    }
+
+		    gl_FragColor = maxValue;
+		}
+	</script>
+	<script id="fs-edge" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec2 vTextureCoord;
+
+		uniform sampler2D uSampler;
+		uniform vec2 invScreenSize;
+
+		void main() {
+			vec2 tc = vTextureCoord;
+		    vec4 sample[9];
+
+		    sample[0] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y - invScreenSize.y));
+		    sample[1] = texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y));
+		    sample[2] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y - invScreenSize.y));
+		    sample[3] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y));
+		    sample[4] = texture2D(uSampler, vec2(tc.x, tc.y));
+		    sample[5] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y));
+		    sample[6] = texture2D(uSampler, vec2(tc.x - invScreenSize.x, tc.y + invScreenSize.y));
+		    sample[7] = texture2D(uSampler, vec2(tc.x, tc.y - invScreenSize.y));
+		    sample[8] = texture2D(uSampler, vec2(tc.x + invScreenSize.x, tc.y - invScreenSize.y));
+
+			//    -1 -2 -1       1 0 -1 
+			// H = 0  0  0   V = 2 0 -2
+			//     1  2  1       1 0 -1
+			//
+			// result = sqrt(H^2 + V^2)
+
+		    vec4 horizEdge = sample[2] + (2.0*sample[5]) + sample[8] -
+		                     (sample[0] + (2.0*sample[3]) + sample[6]);
+
+		    vec4 vertEdge = sample[0] + (2.0*sample[1]) + sample[2] -
+		                    (sample[6] + (2.0*sample[7]) + sample[8]);
+
+		    gl_FragColor.rgb = sqrt((horizEdge.rgb * horizEdge.rgb) + 
+		                            (vertEdge.rgb * vertEdge.rgb));
+		    gl_FragColor.a = 1.0;
+		}
+	</script>
+
+	<!-- libs -->
+	<script type="text/javascript" src="lib/math.js"></script>
+	<script type="text/javascript" src="lib/webgl-debug.js"></script>
+	<script type="text/javascript" src="lib/cv.js"></script>
+	<script type="text/javascript" src="lib/smallestenclosingcircle.js"></script>
+	<script type="text/javascript" src="lib/handtracking.js"></script>
+	<script type="text/javascript" src="lib/numeric-1.2.6.js"></script>
+
+	<!-- models -->
+	<script type="text/javascript" src="js/models.js"></script>
+
+	<!-- core -->
+	<script type="text/javascript" src="js/core/video.js"></script>
+	<script type="text/javascript" src="js/core/calibration.js"></script>
+	<script type="text/javascript" src="js/core/imageprocessor.js"></script>
+
+	<!-- feature -->
+	<script type="text/javascript" src="js/feature/convexHull.js"></script>
+	<script type="text/javascript" src="js/feature/feature.js"></script>
+
+	<!-- train -->
+	<script type="text/javascript" src="js/train/multiGaussian.js"></script>
+	<script type="text/javascript" src="js/train/hmm.js"></script>
+
+	<!-- recognize -->
+	<script type="text/javascript" src="js/recognize/viterbi.js"></script>
+
+	<!-- app -->
+	<script type="text/javascript" src="js/validate/app.js"></script>
+	<script type="text/javascript" src="js/validate.js"></script>
+</head>
+<body>
+	<div id="validation">
+	</div>
+	<div id="list" style="height: 200px; overflow: auto;">
+	</div>
+</body>
+</html>
