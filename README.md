@@ -24,5 +24,4 @@ The validation process uses independent validation samples and calculates matche
 About
 -----
 * Author:            Adrien Zdanski
-* Web Site:          http://pixelsmithy.de
 * Github Repo:       http://github.com/adrienzdanski/js-hmm-gesture-recognition
